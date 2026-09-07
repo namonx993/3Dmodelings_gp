@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Toyota Supra MK IV — Next Gen Rendering (PBR Light Studio)</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: "Segoe UI", "Noto Sans Thai", sans-serif;
+        }
+
+        canvas { display: block; }
+
+        #loading {
+            position: fixed; inset: 0;
+            background: #050505;
+            color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            flex-direction: column;
+            z-index: 20;
+            font-size: 14px;
+            transition: opacity .5s ease;
+        }
+        #loading .spinner {
+            width: 40px; height: 40px;
+            border: 3px solid rgba(255,255,255,.15);
+            border-top-color: #7fd0ff;
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+            margin-bottom: 14px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        #panel {
+            position: fixed;
+            top: 16px; right: 16px;
+            width: 300px;
+            background: rgba(15, 17, 20, 0.88);
+            backdrop-filter: blur(6px);
+            border: 1px solid rgba(255,255,255,.08);
+            border-radius: 10px;
+            color: #e8e8e8;
+            font-size: 12.5px;
+            z-index: 10;
+            box-shadow: 0 10px 30px rgba(0,0,0,.5);
+            user-select: none;
+        }
+        #panel .drag-handle {
+            padding: 10px 14px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: grab;
+            border-bottom: 1px solid rgba(255,255,255,.08);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #panel .drag-handle span.hint { font-weight: 400; opacity: .5; font-size: 10.5px; }
+        .section {
+            border-bottom: 1px solid rgba(255,255,255,.06);
+        }
+        .section .sec-title {
+            padding: 9px 14px;
+            cursor: pointer;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #cfe8ff;
+        }
+        .section .sec-title .arrow { transition: transform .2s ease; font-size: 10px; opacity: .6; }
+        .section.collapsed .sec-body { display: none; }
+        .section.collapsed .arrow { transform: rotate(-90deg); }
+        .sec-body { padding: 2px 14px 12px; }
+
+        .row {
+            display: grid;
+            grid-template-columns: 96px 1fr 42px;
+            align-items: center;
+            gap: 8px;
+            margin: 7px 0;
+        }
+        .row label { opacity: .85; }
+        .row input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: linear-gradient(90deg, #4fa8e0, #4fa8e0) no-repeat;
+            background-size: var(--fill, 50%) 100%;
+            background-color: rgba(255,255,255,.12);
+        }
+        .row input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 13px; height: 13px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 0 0 2px #4fa8e0;
+            cursor: pointer;
+            margin-top: -1px;
+        }
+        .row .val { text-align: right; font-variant-numeric: tabular-nums; opacity: .9; }
+        .row input[type=color] {
+            width: 100%; height: 22px;
+            border: none; border-radius: 4px;
+            background: none; padding: 0; cursor: pointer;
+        }
+        .checkbox-row {
+            display: flex; align-items: center; gap: 8px; margin: 8px 0;
+        }
+        .checkbox-row input { width: 15px; height: 15px; }
+
+        .btn-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin: 8px 0 2px;
+        }
+        .btn {
+            background: rgba(255,255,255,.06);
+            border: 1px solid rgba(255,255,255,.1);
+            color: #e8e8e8;
+            border-radius: 6px;
+            padding: 7px 6px;
+            font-size: 11.5px;
+            cursor: pointer;
+            text-align: center;
+            transition: background .15s ease, border-color .15s ease;
+        }
+        .btn:hover { background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.25); }
+        .btn.active { background: #2a6fa8; border-color: #4fa8e0; }
+        .btn.full { grid-column: 1 / -1; }
+
+        #togglePanelBtn {
+            position: fixed; top: 16px; right: 16px;
+            z-index: 11;
+            background: rgba(15,17,20,.85);
+            border: 1px solid rgba(255,255,255,.1);
+            color: #fff;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 12px;
+            cursor: pointer;
+            display: none;
+        }
+
+        #hint {
+            position: fixed;
+            bottom: 14px; left: 14px;
+            color: rgba(255,255,255,.7);
+            font-size: 11px;
+            z-index: 5;
+            background: rgba(0,0,0,.35);
+            padding: 6px 10px;
+            border-radius: 6px;
+            pointer-events: none;
+        }
+    </style>
+    <!-- Three.js Core Library -->
+    <script src="[https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js](https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js)"></script>
+    <script src="[https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js](https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js)"></script>
+    <script src="[https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js](https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js)"></script>
+</head>
+
+<body>
+    <div id="loading">
+        <div class="spinner"></div>
+        <div>กำลังโหลดฉากและโมเดล...</div>
+    </div>
+
+    <div id="hint">ลากเมาส์ = หมุนกล้อง &nbsp;|&nbsp; Shift + ลาก = หมุนตำแหน่งแสง &nbsp;|&nbsp; scroll = ซูม</div>
+
+    <button id="togglePanelBtn">แสดงแผงควบคุม</button>
+
+    <div id="panel">
+        <div class="drag-handle" id="dragHandle">
+            <span>PBR Light Studio</span>
+            <span class="hint" id="closePanel" style="cursor:pointer;">ซ่อน ✕</span>
+        </div>
+
+        <!-- DIRECTIONAL LIGHT -->
+        <div class="section" id="secLight">
+            <div class="sec-title" data-target="secLight"><span class="arrow">▾</span>☀️ แสงอาทิตย์ (DIRECTIONAL LIGHT)</div>
+            <div class="sec-body">
+                <div class="row">
+                    <label>มุมแนวตั้ง</label>
+                    <input type="range" id="elevation" min="0" max="90" value="39">
+                    <div class="val" id="elevationVal">39</div>
+                </div>
+                <div class="row">
+                    <label>ทิศทาง</label>
+                    <input type="range" id="azimuth" min="0" max="360" value="135">
+                    <div class="val" id="azimuthVal">135</div>
+                </div>
+                <div class="row">
+                    <label>ความเข้มแสง</label>
+                    <input type="range" id="lightIntensity" min="0" max="8" step="0.1" value="3">
+                    <div class="val" id="lightIntensityVal">3.0</div>
+                </div>
+                <div class="row">
+                    <label>สีแสง</label>
+                    <input type="color" id="lightColor" value="#fff2d8">
+                    <div class="val"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AMBIENT -->
+        <div class="section" id="secAmbient">
+            <div class="sec-title" data-target="secAmbient"><span class="arrow">▾</span>☁️ แสงแวดล้อม (AMBIENT / EXPOSURE)</div>
+            <div class="sec-body">
+                <div class="row">
+                    <label>ความเข้มแสงพื้น</label>
+                    <input type="range" id="ambientIntensity" min="0" max="2" step="0.05" value="0.55">
+                    <div class="val" id="ambientIntensityVal">0.55</div>
+                </div>
+                <div class="row">
+                    <label>ค่าแสงรวม</label>
+                    <input type="range" id="exposure" min="0" max="2.5" step="0.05" value="1">
+                    <div class="val" id="exposureVal">1.00</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PBR MATERIAL -->
+        <div class="section" id="secPbr">
+            <div class="sec-title" data-target="secPbr"><span class="arrow">▾</span>🔶 PBR MATERIAL — ตัวรถ</div>
+            <div class="sec-body">
+                <div class="row">
+                    <label>Base Color</label>
+                    <input type="color" id="baseColor" value="#ffffff">
+                    <div class="val"></div>
+                </div>
+                <div class="row">
+                    <label>ผสมสีทับ</label>
+                    <input type="range" id="tintStrength" min="0" max="1" step="0.05" value="0">
+                    <div class="val" id="tintStrengthVal">0.00</div>
+                </div>
+                <div class="row">
+                    <label>Metalness</label>
+                    <input type="range" id="metalness" min="0" max="1" step="0.01" value="0.5">
+                    <div class="val" id="metalnessVal">0.50</div>
+                </div>
+                <div class="row">
+                    <label>Roughness</label>
+                    <input type="range" id="roughness" min="0" max="1" step="0.01" value="0.5">
+                    <div class="val" id="roughnessVal">0.50</div>
+                </div>
+                <div class="row">
+                    <label>IBL Intensity</label>
+                    <input type="range" id="iblIntensity" min="0" max="3" step="0.05" value="1.2">
+                    <div class="val" id="iblIntensityVal">1.20</div>
+                </div>
+                <div class="checkbox-row">
+                    <input type="checkbox" id="shadowToggle" checked>
+                    <label for="shadowToggle">เปิด / ปิด Shadow</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- PRESETS / EXTRA FEATURES -->
+        <div class="section" id="secPreset">
+            <div class="sec-title" data-target="secPreset"><span class="arrow">▾</span>🎬 ฉากสำเร็จรูป &amp; ลูกเล่น</div>
+            <div class="sec-body">
+                <div class="btn-grid">
+                    <div class="btn" data-preset="day">☀️ กลางวัน</div>
+                    <div class="btn" data-preset="sunset">🌇 พลบค่ำ</div>
+                    <div class="btn" data-preset="night">🌙 กลางคืน</div>
+                    <div class="btn" data-preset="studio">💡 สตูดิโอ</div>
+                    <div class="btn full" id="autoRotateBtn">🔄 หมุนกล้องอัตโนมัติ: ปิด</div>
+                    <div class="btn full" id="headlightBtn">🚗 ไฟหน้ารถ: ปิด</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 1. Scene, Camera, Renderer
+        const scene = new THREE.Scene();
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 5000);
+        camera.position.set(0, 3.5, 8);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.target.set(0, 0.6, 0);
+        controls.maxPolarAngle = Math.PI / 2 - 0.01;
+        controls.minDistance = 2.0;
+        controls.maxDistance = 80;
+
+        // 2. โดมฉากหลัง 360 องศา (Skybox)
+        const texLoader = new THREE.TextureLoader();
+        const bgUrl = '[https://cdn.jsdelivr.net/gh/namonx993/3Dmodelings_gp@3b4fee1/cars/bg_track_car.jpg](https://cdn.jsdelivr.net/gh/namonx993/3Dmodelings_gp@3b4fee1/cars/bg_track_car.jpg)';
+        
+        const bgTexture = texLoader.load(bgUrl, (tex) => {
+            tex.mapping = THREE.EquirectangularReflectionMapping;
+            tex.encoding = THREE.sRGBEncoding;
+            scene.environment = tex;
+        });
+
+        const domeGeo = new THREE.SphereGeometry(1500, 60, 40);
+        const domeMat = new THREE.MeshBasicMaterial({
+            map: bgTexture,
+            side: THREE.BackSide
+        });
+        const skyDome = new THREE.Mesh(domeGeo, domeMat);
+        scene.add(skyDome);
+
+        // 3. ระบบแสง
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xfff2d8, 3.0);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 0.5;
+        dirLight.shadow.camera.far = 150;
+        dirLight.shadow.camera.left = -40;
+        dirLight.shadow.camera.right = 40;
+        dirLight.shadow.camera.top = 40;
+        dirLight.shadow.camera.bottom = -40;
+        dirLight.shadow.bias = -0.0005;
+        scene.add(dirLight);
+        scene.add(dirLight.target);
+
+        const fillLight = new THREE.DirectionalLight(0x7799bb, 0.5);
+        fillLight.position.set(-20, 20, -20);
+        scene.add(fillLight);
+
+        function updateLightPosition(elevationDeg, azimuthDeg) {
+            const r = 40;
+            const elev = THREE.MathUtils.degToRad(elevationDeg);
+            const azim = THREE.MathUtils.degToRad(azimuthDeg);
+            const x = r * Math.cos(elev) * Math.sin(azim);
+            const y = r * Math.sin(elev);
+            const z = r * Math.cos(elev) * Math.cos(azim);
+            dirLight.position.set(x, Math.max(y, 0.5), z);
+            dirLight.target.position.set(0, 0.6, 0);
+        }
+        updateLightPosition(39, 135);
+
+        // 4. พื้นหินฉากขนาดใหญ่
+        const texFloor = texLoader.load('[https://sibsansuk.github.io/mossy_cobblestone_diff_1k.jpg](https://sibsansuk.github.io/mossy_cobblestone_diff_1k.jpg)', (t) => {
+            t.wrapS = THREE.RepeatWrapping;
+            t.wrapT = THREE.RepeatWrapping;
+            t.repeat.set(120, 120);
+            t.encoding = THREE.sRGBEncoding;
+        });
+
+        const matFloor = new THREE.MeshStandardMaterial({
+            map: texFloor,
+            roughness: 0.85,
+            metalness: 0.05,
+            side: THREE.DoubleSide
+        });
+
+        const planeGeometry = new THREE.PlaneGeometry(800, 800);
+        const plane = new THREE.Mesh(planeGeometry, matFloor);
+        plane.rotation.x = -Math.PI / 2;
+        plane.position.y = 0;
+        plane.receiveShadow = true;
+        scene.add(plane);
+
+        // 5. โหลดโมเดลรถ Supra (.glb)
+        let carMesh = null;
+        const carMaterials = [];
+        const carBaseColors = new Map();
+        const loader = new THREE.GLTFLoader();
+        const modelUrl = '[https://cdn.jsdelivr.net/gh/namonx993/3Dmodelings_gp@b4a0258/cars/supranew_moduel.glb](https://cdn.jsdelivr.net/gh/namonx993/3Dmodelings_gp@b4a0258/cars/supranew_moduel.glb)';
+
+        const headlightL = new THREE.SpotLight(0xdfefff, 0, 20, Math.PI / 6, 0.4, 1.2);
+        const headlightR = new THREE.SpotLight(0xdfefff, 0, 20, Math.PI / 6, 0.4, 1.2);
+        scene.add(headlightL, headlightL.target, headlightR, headlightR.target);
+
+        loader.load(
+            modelUrl,
+            (gltf) => {
+                carMesh = gltf.scene;
+
+                carMesh.traverse((child) => {
+                    if (child.isMesh) {
+                        if (child.name.toLowerCase().includes('plane') || child.geometry.type === 'PlaneGeometry') {
+                            child.visible = false;
+                            return;
+                        }
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+
+                        const mats = Array.isArray(child.material) ? child.material : [child.material];
+                        mats.forEach((m) => {
+                            if (m && m.isMeshStandardMaterial) {
+                                carMaterials.push(m);
+                                carBaseColors.set(m, m.color.clone());
+                                m.envMapIntensity = 1.2;
+                            }
+                        });
+                    }
+                });
+
+                carMesh.scale.set(1, 1, 1);
+                carMesh.position.set(0, 0, 0);
+                scene.add(carMesh);
+
+                headlightL.position.set(0.65, 0.75, 2.2);
+                headlightR.position.set(-0.65, 0.75, 2.2);
+                headlightL.target.position.set(0.65, 0.3, 10);
+                headlightR.target.position.set(-0.65, 0.3, 10);
+
+                syncPbrControlsFromModel();
+                finishLoading();
+            },
+            undefined,
+            (error) => {
+                console.error('เกิดข้อผิดพลาดในการโหลดโมเดล:', error);
+                finishLoading();
+            }
+        );
+
+        function finishLoading() {
+            const el = document.getElementById('loading');
+            if (el) {
+                el.style.opacity = '0';
+                setTimeout(() => el.remove(), 500);
+            }
+        }
+
+        // 6. GUI Bindings
+        function bindRange(id, valId, onChange, decimals) {
+            const input = document.getElementById(id);
+            const valEl = document.getElementById(valId);
+            const update = () => {
+                const v = parseFloat(input.value);
+                const min = parseFloat(input.min), max = parseFloat(input.max);
+                input.style.setProperty('--fill', ((v - min) / (max - min) * 100) + '%');
+                if (valEl) valEl.textContent = decimals !== undefined ? v.toFixed(decimals) : v;
+                onChange(v);
+            };
+            input.addEventListener('input', update);
+            update();
+            return update;
+        }
+
+        bindRange('elevation', 'elevationVal', (v) => updateLightPosition(v, parseFloat(document.getElementById('azimuth').value)), 0);
+        bindRange('azimuth', 'azimuthVal', (v) => updateLightPosition(parseFloat(document.getElementById('elevation').value), v), 0);
+        bindRange('lightIntensity', 'lightIntensityVal', (v) => { dirLight.intensity = v; }, 1);
+        bindRange('ambientIntensity', 'ambientIntensityVal', (v) => { ambientLight.intensity = v; }, 2);
+        bindRange('exposure', 'exposureVal', (v) => { renderer.toneMappingExposure = v; }, 2);
+
+        document.getElementById('lightColor').addEventListener('input', (e) => {
+            dirLight.color.set(e.target.value);
+        });
+
+        function refreshCarMaterials() {
+            const tint = new THREE.Color(document.getElementById('baseColor').value);
+            const tintStrength = parseFloat(document.getElementById('tintStrength').value);
+            const metal = parseFloat(document.getElementById('metalness').value);
+            const rough = parseFloat(document.getElementById('roughness').value);
+            const ibl = parseFloat(document.getElementById('iblIntensity').value);
+
+            carMaterials.forEach((m) => {
+                const base = carBaseColors.get(m) || m.color;
+                m.color.copy(base).lerp(tint, tintStrength);
+                m.metalness = metal;
+                m.roughness = rough;
+                m.envMapIntensity = ibl;
+                m.needsUpdate = true;
+            });
+        }
+
+        document.getElementById('baseColor').addEventListener('input', refreshCarMaterials);
+        bindRange('tintStrength', 'tintStrengthVal', refreshCarMaterials, 2);
+        bindRange('metalness', 'metalnessVal', refreshCarMaterials, 2);
+        bindRange('roughness', 'roughnessVal', refreshCarMaterials, 2);
+        bindRange('iblIntensity', 'iblIntensityVal', refreshCarMaterials, 2);
+
+        function syncPbrControlsFromModel() {
+            if (carMaterials.length === 0) return;
+            let m = 0, r = 0;
+            carMaterials.forEach((mat) => { m += mat.metalness; r += mat.roughness; });
+            m /= carMaterials.length; r /= carMaterials.length;
+            document.getElementById('metalness').value = m.toFixed(2);
+            document.getElementById('roughness').value = r.toFixed(2);
+            document.getElementById('metalness').dispatchEvent(new Event('input'));
+            document.getElementById('roughness').dispatchEvent(new Event('input'));
+        }
+
+        document.getElementById('shadowToggle').addEventListener('change', (e) => {
+            renderer.shadowMap.enabled = e.target.checked;
+            dirLight.castShadow = e.target.checked;
+            scene.traverse((obj) => { if (obj.isMesh) obj.castShadow = e.target.checked; });
+        });
+
+        // Presets
+        const presetButtons = document.querySelectorAll('[data-preset]');
+        const presets = {
+            day:     { elev: 55, azim: 130, intensity: 3.2, color: '#fff6e0', ambient: 0.65, exposure: 1.0 },
+            sunset:  { elev: 12, azim: 200, intensity: 3.6, color: '#ff9552', ambient: 0.35, exposure: 1.15 },
+            night:   { elev: 25, azim: 90,  intensity: 0.8, color: '#7fa8ff', ambient: 0.18, exposure: 0.9 },
+            studio:  { elev: 60, azim: 45,  intensity: 4.5, color: '#ffffff', ambient: 0.9,  exposure: 1.1 },
+        };
+        let headlightOn = false;
+
+        function applyPreset(name) {
+            const p = presets[name];
+            if (!p) return;
+            document.getElementById('elevation').value = p.elev;
+            document.getElementById('azimuth').value = p.azim;
+            document.getElementById('lightIntensity').value = p.intensity;
+            document.getElementById('lightColor').value = p.color;
+            document.getElementById('ambientIntensity').value = p.ambient;
+            document.getElementById('exposure').value = p.exposure;
+            ['elevation', 'azimuth', 'lightIntensity', 'ambientIntensity', 'exposure'].forEach((id) => {
+                document.getElementById(id).dispatchEvent(new Event('input'));
+            });
+            dirLight.color.set(p.color);
+            presetButtons.forEach((b) => b.classList.toggle('active', b.dataset.preset === name));
+
+            const isNight = name === 'night';
+            headlightOn = isNight;
+            headlightL.intensity = headlightOn ? 8 : 0;
+            headlightR.intensity = headlightOn ? 8 : 0;
+            document.getElementById('headlightBtn').textContent = '🚗 ไฟหน้ารถ: ' + (headlightOn ? 'เปิด' : 'ปิด');
+        }
+        presetButtons.forEach((b) => b.addEventListener('click', () => applyPreset(b.dataset.preset)));
+        applyPreset('day');
+
+        // Auto rotate
+        let autoRotate = false;
+        document.getElementById('autoRotateBtn').addEventListener('click', () => {
+            autoRotate = !autoRotate;
+            controls.autoRotate = autoRotate;
+            controls.autoRotateSpeed = 1.4;
+            document.getElementById('autoRotateBtn').textContent = '🔄 หมุนกล้องอัตโนมัติ: ' + (autoRotate ? 'เปิด' : 'ปิด');
+        });
+
+        // Headlight toggle
+        document.getElementById('headlightBtn').addEventListener('click', () => {
+            headlightOn = !headlightOn;
+            headlightL.intensity = headlightOn ? 8 : 0;
+            headlightR.intensity = headlightOn ? 8 : 0;
+            document.getElementById('headlightBtn').textContent = '🚗 ไฟหน้ารถ: ' + (headlightOn ? 'เปิด' : 'ปิด');
+        });
+
+        // Shift + Drag หมุนตำแหน่งแสง
+        let shiftDragging = false;
+        renderer.domElement.addEventListener('pointerdown', (e) => {
+            if (e.shiftKey) { shiftDragging = true; controls.enabled = false; }
+        });
+        window.addEventListener('pointerup', () => { shiftDragging = false; controls.enabled = true; });
+        window.addEventListener('pointermove', (e) => {
+            if (!shiftDragging) return;
+            const azEl = document.getElementById('azimuth');
+            const elEl = document.getElementById('elevation');
+            let az = parseFloat(azEl.value) - e.movementX * 0.4;
+            let el = parseFloat(elEl.value) - e.movementY * 0.4;
+            az = ((az % 360) + 360) % 360;
+            el = THREE.MathUtils.clamp(el, 0, 90);
+            azEl.value = az; elEl.value = el;
+            azEl.dispatchEvent(new Event('input'));
+            elEl.dispatchEvent(new Event('input'));
+        });
+
+        // UI Panel Helpers
+        document.querySelectorAll('.sec-title').forEach((t) => {
+            t.addEventListener('click', () => {
+                document.getElementById(t.dataset.target).classList.toggle('collapsed');
+            });
+        });
+
+        const panel = document.getElementById('panel');
+        const toggleBtn = document.getElementById('togglePanelBtn');
+        document.getElementById('closePanel').addEventListener('click', () => {
+            panel.style.display = 'none';
+            toggleBtn.style.display = 'block';
+        });
+        toggleBtn.addEventListener('click', () => {
+            panel.style.display = 'block';
+            toggleBtn.style.display = 'none';
+        });
+
+        (function makeDraggable() {
+            const handle = document.getElementById('dragHandle');
+            let dragging = false, offX = 0, offY = 0;
+            handle.addEventListener('pointerdown', (e) => {
+                if (e.target.id === 'closePanel') return;
+                dragging = true;
+                const rect = panel.getBoundingClientRect();
+                offX = e.clientX - rect.left;
+                offY = e.clientY - rect.top;
+                panel.style.right = 'auto';
+            });
+            window.addEventListener('pointermove', (e) => {
+                if (!dragging) return;
+                panel.style.left = Math.min(Math.max(0, e.clientX - offX), window.innerWidth - panel.offsetWidth) + 'px';
+                panel.style.top = Math.min(Math.max(0, e.clientY - offY), window.innerHeight - 40) + 'px';
+            });
+            window.addEventListener('pointerup', () => { dragging = false; });
+        })();
+
+        // 7. Render Loop
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // 8. Window Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+
+</html>
